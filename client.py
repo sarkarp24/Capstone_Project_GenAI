@@ -5,7 +5,7 @@ import json
 url = "http://localhost:8005/medical_assistance/"
 
 question = {
-    "question": "What is seasonal allergy and what are the treatments available?"
+    "question": "What is Rheumatoid Arthritis and what are the treatments available?"
 }
 
 # Send POST request
