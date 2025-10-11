@@ -1,3 +1,4 @@
+# Ignore all the _bkp files
 # Pre-requisite
     1.  Install Ollama model first and then start the service
         Command to start the service: ollama run llama3.2
