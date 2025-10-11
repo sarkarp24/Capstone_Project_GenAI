@@ -5,9 +5,13 @@ import json
 url = "http://localhost:8005/medical_assistance/"
 
 question = {
-    "question": "What is Rheumatoid Arthritis and what are the treatments available?"
+    "question": "What is Type 2 Diabetes and what are the treatments available?"
 }
-
+'''
+question = {
+    "question": "What is capital of India?"
+}
+'''
 # Send POST request
 response = requests.post(url, json=question)
 

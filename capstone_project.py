@@ -17,6 +17,7 @@ from langchain_groq import ChatGroq
 from langchain_community.llms import ollama
 import os
 from dotenv import load_dotenv
+import json
 load_dotenv()
 
 loader_kwargs = {
@@ -35,21 +36,24 @@ loader_kwargs = {
     ],
 }
 #print(os.getcwd()+"/data/json/synthetic_medical_kb.json")
-loader = DirectoryLoader(
-    path="data/json",
-    glob="**/*.json",
-    loader_cls=JSONLoader,
-    loader_kwargs = {
-    # .[] is used to iterate over every item in the root array
-    "jq_schema": ".[]",
-    
-    # Specifies the key containing the main text content
-    "content_key": "content",
-    #recursive=True, # Set to True if you have JSON files in subdirectories
-    #show_progress=True # Optional: shows a progress bar during loading
-    },
-    recursive=True, # Set to True if you have JSON files in subdirectories
-)
+loader = JSONLoader(
+    file_path='data/json/synthetic_medical_kb.json',
+    jq_schema=loader_kwargs["jq_schema"],
+    text_content=False)
+
+print(loader)
+
+json_documents=loader.load()
+#print(f"Loaded {len(json_documents)} documents.")
+#json_documents
+
+
+for doc in json_documents:
+    dict_doc = json.loads(doc.page_content)
+    joint_content = '\n'.join(f"{d}:{dict_doc[d]}" for d in dict_doc)
+    #print(joint_content)
+    doc.page_content = joint_content
+    #print("-----")
 #print(loader)
 '''
 loader = JSONLoader(
@@ -79,20 +83,6 @@ def split_documents(documents,chunk_size=1600,chunk_overlap=300):
     split_docs = text_splitter.split_documents(documents)
     print(f"Split {len(documents)} documents into {len(split_docs)} chunks")
     
-    # Show example of a chunk
-    '''
-    if split_docs:
-        print(f"\nExample chunk:")
-        print(f"Content: {split_docs[0].page_content[:200]}...")
-        print(f"Content: {split_docs}")
-        #print(f"Metadata: {split_docs[0].metadata}")
-    '''
-    '''
-    for docs in split_docs:
-        print(docs.page_content)
-        #print(docs.metadata)
-        print("-----")
-    '''
 
     return split_docs
 
@@ -220,7 +210,7 @@ class VectorStore:
 vectorstore=VectorStore()
 print(vectorstore)
 
-
+'''
 texts = [doc.page_content for doc in chunks]
 print(len(texts))
 for i in range(0, len(texts), 5000):
@@ -229,7 +219,7 @@ for i in range(0, len(texts), 5000):
     vectorstore.add_documents(chunks[i:i+5000], embeddings)
 #embeddings = embedding_manager.generate_embeddings(texts)
 #vectorstore.add_documents(chunks, embeddings)
-
+'''
 
 class RAGRetriever:
     """Handles query-based retrieval from the vector store"""
@@ -304,7 +294,7 @@ class RAGRetriever:
             return []
 
 rag_retriever=RAGRetriever(vectorstore,embedding_manager)
-print(rag_retriever)
+#print(rag_retriever)
 
 
 
@@ -312,37 +302,84 @@ print(rag_retriever)
 llm=ollama.Ollama(model="llama3.2",temperature=0.1)
 
 ## 2. Simple RAG function: retrieve context + generate response
-async def rag_simple(query,retriever,llm,top_k=3):
-    ## retriever the context
-    results=retriever.retrieve(query,top_k=top_k)
-    '''
-    for r in results:
-        print(r)
-        print('----')
-        print(r['metadata'])
-        print('-----')
-        print(r['content'])
-    '''
-    context="\n\n".join([doc['content'] for doc in results]) if results else ""
-    print("Context Retrieved:\n",context)
-    print("-----")
-    if not context:
-        return "No relevant context found to answer the question."
-    
-    ## generate the answwer using GROQ LLM
-    prompt=f"""Use the following context to answer the question concisely.
-        Context:
-        {context}
+class AdvancedRAGPipeline:
+    def __init__(self, retriever, llm):
+        self.retriever = retriever
+        self.llm = llm
+        self.history = []  # Store query history
 
-        Question: {query}
+    async def query(self, question: str, top_k: int = 5, min_score: float = 0.0, stream: bool = False, summarize: bool = False) -> Dict[str, Any]:
+        emergency = ['emergency', 'urgent', 'immediate help', 'as soon as possible', 'right away', 'critical', 'danger', 'threat','bleeding','accident','injury',
+                     'chest pain','chest discomfort','shortness of breath','severe pain','unconscious','unresponsive','dizziness','confusion','seizure','pregnant','suicide','suicidal']
+        
+        #print(question)
+        if any(word in question.lower() for word in emergency):
+            warning_message = "WARNING!!! If this is a medical emergency, please call 911 or go to the nearest emergency care immediately."
+            print(warning_message)
+        # Retrieve relevant documents
+        results = self.retriever.retrieve(question, top_k=top_k, score_threshold=min_score)
+        #print(f"Retrieved {(results)} documents for the query.")
+        if not results:
+            answer = "No relevant context found."
+            sources = []
+            context = ""
+        else:
+            context = "\n\n".join([doc['content'] for doc in results])
+            sources = [{
+                'source': doc['metadata'].get('source_file', doc['metadata'].get('source', 'unknown')),
+                'page': doc['metadata'].get('page', 'unknown'),
+                'score': doc['similarity_score'],
+                'preview': doc['content'][:120] + '...'
+            } for doc in results]
+            
+            print(context)
+            for s in sources:
+                print(s['score'])
+            
+            # Streaming answer simulation
+            prompt = f"""Use the following context to answer the question concisely.\nContext:\n{context}\n\nQuestion: {question}\n\nAnswer:"""
+            '''
+            if stream:
+                print("Streaming answer:")
+                for i in range(0, len(prompt), 80):
+                    print(prompt[i:i+80], end='', flush=True)
+                    time.sleep(0.05)
+                print()
+            '''
+            response = self.llm.invoke([prompt.format(context=context, question=question)])
+            answer = response
+            #print("LLM Response:", answer)
 
-        Answer:"""
-    
-    #print("Prompt to LLM:\n",prompt)
-    response=await llm.ainvoke([prompt.format(context=context,query=query)])
-    #response = "this is a placeholder response from LLM."
-    #print("LLM Response:\n",response)
-    return response
+        if answer == 'No relevant context found.':
+            answer = None
 
-#answer=rag_simple("what is indigestion and what are the treatments available?",rag_retriever,llm)
-#print(answer)
+        # Add citations to answer
+        citations = [f"[{i+1}] {src['source']} (page {src['page']})" for i, src in enumerate(sources)]
+        #print("Citations:", citations)
+        answer_with_citations = answer + "\n\nCitations:\n" + "\n".join(citations) if citations else answer
+
+        # Optionally summarize answer
+        summary = None
+        #print('answer of the query:',answer)
+        if summarize and answer:
+            summary_prompt = f"Write the warning message based on the answer:\n{answer}"
+            #print('summary_prompt:',summary_prompt)
+            summary_resp = self.llm.invoke([summary_prompt])
+            #print("Summary Response:", summary_resp)
+            summary = summary_resp
+
+        # Store query history
+        self.history.append({
+            'question': question,
+            'answer': answer,
+            'sources': sources,
+            'summary': summary
+        })
+
+        return {
+            'question': question,
+            'answer': answer_with_citations,
+            'sources': sources,
+            'warning': summary,
+            'history': self.history
+        }
