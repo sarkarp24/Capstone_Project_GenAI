@@ -5,7 +5,7 @@
 
 # Download the project from the GitHub and configure locally on your machine 
 
-# Instruction to run .ipynyb
+# Instruction to run .ipynb
     1.  Run all the cells sequentially from capstone_project.ipynb
 
 # Instruction to run as API
