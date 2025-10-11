@@ -6,7 +6,7 @@
 # Download the project from the GitHub and configure locally on your machine 
 
 # Instruction to run .ipynyb
-    1.  Run all the cells sequentially from capstone_project.ipynyb
+    1.  Run all the cells sequentially from capstone_project.ipynb
 
 # Instruction to run as API
     1.  Open server.py, open a terminal and change the directory where server.py is located
